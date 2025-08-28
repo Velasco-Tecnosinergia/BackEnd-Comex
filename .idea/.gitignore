@@ -1,0 +1,46 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+# Editor-based HTTP Client requests
+/httpRequests/
+
+# Ignorar bases de datos
+*.db
+*.sqlite
+*.sqlite3
+
+
+# Directorios de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# Entorno virtual
+.env/
+venv/
+env/
+/Lib/
+/Scripts/
+/Include/
+.python-version
+
+# Archivos de bases de datos
+*.db
+*.sqlite
+*.sqlite3
+
+# Archivos de IDE (JetBrains)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Archivos de logs y datos temporales
+*.log
+/data/
+
+# Archivos específicos de sistema operativo
+.DS_Store
+Thumbs.db
