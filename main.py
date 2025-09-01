@@ -55,10 +55,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
 
     # JSON 1
-    credentials = {
-        "user": user.username,
-        "password": user.password
-    }
+    credentials = {"user": user.username, "password": user.password}
 
     # JSON 2
     statistics = {
@@ -70,7 +67,6 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         "End": 1756360800
     }
 
-    # URL del PUT con Digest Auth
     url = "http://201.139.102.51:9191/LAPI/V1.0/Channels/Smart/PassengerFlowStatistics/CustomTimeStart"
 
     try:
@@ -81,13 +77,39 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             timeout=10
         )
         response.raise_for_status()
-        remote_response = response.json() if response.headers.get("content-type") == "application/json" else response.text
+        remote_response = response.json()
     except Exception as e:
-        remote_response = {"error": str(e)}
+        return {"error": f"PUT failed: {str(e)}"}
 
-    # Retornamos todo junto
+    # 👇 Extraemos bien el SearchID
+    search_id = remote_response.get("Response", {}).get("Data", {}).get("SearchID")
+
+    if not search_id:
+        return {
+            "credentials": credentials,
+            "statistics": statistics,
+            "remote_response": remote_response,
+            "progress_response": {"error": "No SearchID en la respuesta del PUT"}
+        }
+
+    # Hacemos la segunda petición GET con el SearchID
+    progress_url = f"http://201.139.102.51:9191/LAPI/V1.0/Channels/Smart/PassengerFlowStatistics/Progress?SearchID={search_id}"
+
+    try:
+        progress_response = requests.get(
+            progress_url,
+            auth=HTTPDigestAuth(user.username, user.password),
+            timeout=10
+        )
+        progress_response.raise_for_status()
+        progress_data = progress_response.json()
+    except Exception as e:
+        progress_data = {"error": f"GET failed: {str(e)}"}
+
     return {
         "credentials": credentials,
         "statistics": statistics,
-        "remote_response": remote_response
+        "remote_response": remote_response,
+        "progress_response": progress_data
     }
+
