@@ -54,10 +54,8 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     if not user or user.password != request.password:
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
 
-    # JSON 1
     credentials = {"user": user.username, "password": user.password}
 
-    # JSON 2
     statistics = {
         "Num": 16,
         "IDs": [i for i in range(1, 17)],
@@ -67,49 +65,62 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         "End": 1756360800
     }
 
-    url = "http://201.139.102.51:9191/LAPI/V1.0/Channels/Smart/PassengerFlowStatistics/CustomTimeStart"
+    base_url = "http://201.139.102.51:9191/LAPI/V1.0/Channels/Smart/PassengerFlowStatistics"
 
+    # Paso 1: PUT para generar SearchID
     try:
-        response = requests.put(
-            url,
+        put_resp = requests.put(
+            f"{base_url}/CustomTimeStart",
             json=statistics,
             auth=HTTPDigestAuth(user.username, user.password),
             timeout=10
         )
-        response.raise_for_status()
-        remote_response = response.json()
+        put_resp.raise_for_status()
+        remote_response = put_resp.json()
     except Exception as e:
         return {"error": f"PUT failed: {str(e)}"}
 
-    # 👇 Extraemos bien el SearchID
     search_id = remote_response.get("Response", {}).get("Data", {}).get("SearchID")
-
     if not search_id:
-        return {
-            "credentials": credentials,
-            "statistics": statistics,
-            "remote_response": remote_response,
-            "progress_response": {"error": "No SearchID en la respuesta del PUT"}
-        }
+        return {"error": "No SearchID en respuesta del PUT", "remote_response": remote_response}
 
-    # Hacemos la segunda petición GET con el SearchID
-    progress_url = f"http://201.139.102.51:9191/LAPI/V1.0/Channels/Smart/PassengerFlowStatistics/Progress?SearchID={search_id}"
-
+    # Paso 2: GET Progress
     try:
-        progress_response = requests.get(
-            progress_url,
+        progress_resp = requests.get(
+            f"{base_url}/Progress?SearchID={search_id}",
             auth=HTTPDigestAuth(user.username, user.password),
             timeout=10
         )
-        progress_response.raise_for_status()
-        progress_data = progress_response.json()
+        progress_resp.raise_for_status()
+        progress_data = progress_resp.json()
     except Exception as e:
-        progress_data = {"error": f"GET failed: {str(e)}"}
+        return {
+            "remote_response": remote_response,
+            "error": f"GET Progress failed: {str(e)}"
+        }
+
+    # Paso 3: si Percent == 100, hacemos GET Statistics
+    percent = progress_data.get("Response", {}).get("Data", {}).get("Percent")
+    stats_data = None
+
+    if percent == 100:
+        try:
+            stats_resp = requests.get(
+                f"{base_url}?SearchID={search_id}",
+                auth=HTTPDigestAuth(user.username, user.password),
+                timeout=10
+            )
+            stats_resp.raise_for_status()
+            stats_data = stats_resp.json()
+        except Exception as e:
+            stats_data = {"error": f"GET Statistics failed: {str(e)}"}
 
     return {
         "credentials": credentials,
         "statistics": statistics,
         "remote_response": remote_response,
-        "progress_response": progress_data
+        "progress_response": progress_data,
+        "final_statistics": stats_data
     }
+
 
