@@ -6,6 +6,8 @@ from database import engine, Base, get_db
 from models import User
 import requests
 from requests.auth import HTTPDigestAuth
+from pymongo import MongoClient
+import datetime
 
 app = FastAPI()
 
@@ -18,8 +20,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Crear tablas
+# Crear tablas SQL (para usuarios)
 Base.metadata.create_all(bind=engine)
+
+# Conexión a MongoDB (para estadísticas)
+client = MongoClient("mongodb://localhost:27017/")
+db = client["passenger_flow"]
+statistics_collection = db["statistics"]
 
 # Modelo de request
 class LoginRequest(BaseModel):
@@ -112,6 +119,16 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             )
             stats_resp.raise_for_status()
             stats_data = stats_resp.json()
+
+            # ✅ Guardar en Mongo
+            statistics_collection.insert_one({
+                "username": user.username,
+                "search_id": search_id,
+                "percent": percent,
+                "final_statistics": stats_data,
+                "created_at": datetime.datetime.utcnow()
+            })
+
         except Exception as e:
             stats_data = {"error": f"GET Statistics failed: {str(e)}"}
 
@@ -123,4 +140,12 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         "final_statistics": stats_data
     }
 
+# ✅ Endpoint para obtener la última estadística guardada
+@app.get("/statistics/latest")
+def get_latest_statistics():
+    doc = statistics_collection.find_one(sort=[("created_at", -1)])
+    if not doc:
+        raise HTTPException(status_code=404, detail="No hay estadísticas aún")
 
+    doc["_id"] = str(doc["_id"])  # convertir ObjectId a string
+    return doc
