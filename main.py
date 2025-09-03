@@ -139,20 +139,43 @@ def fetch_statistics(request: LoginRequest):
             stats_resp.raise_for_status()
             stats_data = stats_resp.json()
 
-            # ⚠️ La lista real viene en "PassengerFlowInfos" (fallback a "List" por si cambia)
+            # ⚠️ La lista real viene en "PassengerFlowInfos"
             data_section = stats_data.get("Response", {}).get("Data", {}) or {}
             cams = data_section.get("PassengerFlowInfos")
             if cams is None:
                 cams = data_section.get("List", [])  # fallback
 
             for cam in cams:
+                enter_list = cam.get("EnterCountList", []) or []
+                exit_list = cam.get("ExitCountList", []) or []
+
+                # Totales
+                enter_total = sum_counts(enter_list)
+                exit_total = sum_counts(exit_list)
+
+                # Procesar por día
+                daily_stats = []
+                current_date = first_day
+                for i in range(min(len(enter_list), len(exit_list))):
+                    day = (first_day + datetime.timedelta(days=i)).strftime("%Y-%m-%d")
+                    enter = enter_list[i] if i < len(enter_list) else 0
+                    exit_ = exit_list[i] if i < len(exit_list) else 0
+                    present = (enter or 0) - (exit_ or 0)
+                    daily_stats.append({
+                        "day": day,
+                        "enter": enter,
+                        "exit": exit_,
+                        "present": present
+                    })
+
                 processed_stats.append({
                     "ID": cam.get("ID"),
-                    "EnterTotal": sum_counts(cam.get("EnterCountList")),
-                    "ExitTotal": sum_counts(cam.get("ExitCountList")),
+                    "EnterTotal": enter_total,
+                    "ExitTotal": exit_total,
+                    "Daily": daily_stats
                 })
 
-            # Guardar
+            # Guardar en Mongo
             statistics_collection.insert_one({
                 "username": user["username"],
                 "search_id": search_id,
@@ -175,6 +198,7 @@ def fetch_statistics(request: LoginRequest):
         "begin": statistics["Begin"],
         "end": statistics["End"],
     }
+
 
 # 🗂 Última estadística
 @app.get("/statistics/latest")
